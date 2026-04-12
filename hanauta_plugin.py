@@ -45,7 +45,12 @@ def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
     SwitchButton = api["SwitchButton"]
     ExpandableServiceSection = api["ExpandableServiceSection"]
     material_icon = api["material_icon"]
-    icon_path = str(api.get("plugin_icon_path", "")).strip()
+    icon_candidate = PLUGIN_ROOT / "assets" / "icon.svg"
+    icon_path = (
+        str(icon_candidate)
+        if icon_candidate.exists()
+        else str(api.get("plugin_icon_path", "")).strip()
+    )
 
     ntfy = window.settings_state.setdefault("ntfy", {})
     if not isinstance(ntfy, dict):
