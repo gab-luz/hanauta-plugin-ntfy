@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -19,6 +20,41 @@ def _normalize_poll_interval(value: object) -> float:
     return max(1.0, min(60.0, parsed))
 
 
+def _save_settings(window) -> None:
+    module = sys.modules.get(window.__class__.__module__)
+    save_function = (
+        getattr(module, "save_settings_state", None) if module is not None else None
+    )
+    if callable(save_function):
+        save_function(window.settings_state)
+        return
+    callback = getattr(window, "_save_settings", None)
+    if callable(callback):
+        callback()
+
+
+def _parse_topics(value: object) -> list[str]:
+    raw = str(value or "")
+    parsed: list[str] = []
+    for part in raw.split(","):
+        topic = part.strip()
+        if topic and topic not in parsed:
+            parsed.append(topic)
+    return parsed
+
+
+def _topics_csv(ntfy: dict) -> str:
+    topics = [
+        str(item).strip()
+        for item in ntfy.get("topics", [])
+        if isinstance(item, str) and str(item).strip()
+    ]
+    legacy_topic = str(ntfy.get("topic", "")).strip()
+    if legacy_topic and legacy_topic not in topics:
+        topics.insert(0, legacy_topic)
+    return ", ".join(topics)
+
+
 def _set_ntfy_enabled(window, enabled: bool) -> None:
     if hasattr(window, "_set_ntfy_enabled") and callable(window._set_ntfy_enabled):
         window._set_ntfy_enabled(bool(enabled))
@@ -30,8 +66,7 @@ def _set_ntfy_enabled(window, enabled: bool) -> None:
     ntfy["enabled"] = bool(enabled)
     if not bool(enabled):
         ntfy["show_in_bar"] = False
-    if hasattr(window, "_save_settings"):
-        window._save_settings()
+    _save_settings(window)
 
 
 def _set_ntfy_show_in_bar(window, enabled: bool) -> None:
@@ -46,8 +81,7 @@ def _set_ntfy_show_in_bar(window, enabled: bool) -> None:
         ntfy["show_in_bar"] = False
     else:
         ntfy["show_in_bar"] = bool(enabled)
-    if hasattr(window, "_save_settings"):
-        window._save_settings()
+    _save_settings(window)
 
 
 def _set_ntfy_poll_interval(window, seconds: object) -> float:
@@ -57,23 +91,21 @@ def _set_ntfy_poll_interval(window, seconds: object) -> float:
         window.settings_state["ntfy"] = ntfy
     normalized = _normalize_poll_interval(seconds)
     ntfy["poll_interval_seconds"] = normalized
-    if hasattr(window, "_save_settings"):
-        window._save_settings()
+    _save_settings(window)
     return normalized
 
 
-def _set_ntfy_topic(window, topic: object) -> str:
+def _set_ntfy_topics(window, topic_csv: object) -> list[str]:
     ntfy = window.settings_state.setdefault("ntfy", {})
     if not isinstance(ntfy, dict):
         ntfy = {}
         window.settings_state["ntfy"] = ntfy
-    value = str(topic or "").strip()
-    ntfy["topic"] = value
-    ntfy["topics"] = [value] if value else []
+    topics = _parse_topics(topic_csv)
+    ntfy["topics"] = topics
+    ntfy["topic"] = topics[0] if topics else ""
     ntfy["all_topics"] = False
-    if hasattr(window, "_save_settings"):
-        window._save_settings()
-    return value
+    _save_settings(window)
+    return topics
 
 
 def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
@@ -96,6 +128,7 @@ def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
     ntfy.setdefault("show_in_bar", False)
     ntfy.setdefault("poll_interval_seconds", 1.0)
     ntfy.setdefault("topic", "")
+    ntfy.setdefault("topics", [])
 
     content = QWidget()
     layout = QVBoxLayout(content)
@@ -134,31 +167,34 @@ def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
     topic_layout = QHBoxLayout(topic_wrap)
     topic_layout.setContentsMargins(0, 0, 0, 0)
     topic_layout.setSpacing(8)
-    topic_input = QLineEdit(str(ntfy.get("topic", "")).strip())
-    topic_input.setPlaceholderText("my-topic")
-    save_topic_button = QPushButton("Save topic")
+    topic_input = QLineEdit(_topics_csv(ntfy))
+    topic_input.setPlaceholderText("topic-one, topic-two")
+    save_topic_button = QPushButton("Save topics")
     save_topic_button.setObjectName("secondaryButton")
     save_topic_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-    def _save_topic() -> None:
-        saved = _set_ntfy_topic(window, topic_input.text())
-        topic_input.setText(saved)
-        if saved:
+    def _save_topics() -> None:
+        topics = _set_ntfy_topics(window, topic_input.text())
+        topic_input.setText(", ".join(topics))
+        if topics:
             status.setText(
-                f"Topic saved: {saved}. "
+                f"Topics saved: {', '.join(topics)}. "
                 "Use the built-in ntfy section to configure auth/privacy advanced options."
             )
         else:
-            status.setText("Topic cleared. Configure at least one topic to receive notifications.")
+            status.setText(
+                "Topics cleared. Configure at least one topic to receive notifications."
+            )
 
-    save_topic_button.clicked.connect(_save_topic)
+    save_topic_button.clicked.connect(_save_topics)
+    topic_input.returnPressed.connect(_save_topics)
     topic_layout.addWidget(topic_input)
     topic_layout.addWidget(save_topic_button)
     layout.addWidget(
         SettingsRow(
             material_icon("notifications"),
-            "Receive topic",
-            "Quick setup for one incoming ntfy topic used by desktop alerts.",
+            "Receive topics",
+            "Comma-separated list of incoming ntfy topics used by desktop alerts.",
             window.icon_font,
             window.ui_font,
             topic_wrap,
