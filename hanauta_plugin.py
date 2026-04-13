@@ -62,6 +62,20 @@ def _set_ntfy_poll_interval(window, seconds: object) -> float:
     return normalized
 
 
+def _set_ntfy_topic(window, topic: object) -> str:
+    ntfy = window.settings_state.setdefault("ntfy", {})
+    if not isinstance(ntfy, dict):
+        ntfy = {}
+        window.settings_state["ntfy"] = ntfy
+    value = str(topic or "").strip()
+    ntfy["topic"] = value
+    ntfy["topics"] = [value] if value else []
+    ntfy["all_topics"] = False
+    if hasattr(window, "_save_settings"):
+        window._save_settings()
+    return value
+
+
 def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
     SettingsRow = api["SettingsRow"]
     SwitchButton = api["SwitchButton"]
@@ -81,6 +95,7 @@ def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
     ntfy.setdefault("enabled", False)
     ntfy.setdefault("show_in_bar", False)
     ntfy.setdefault("poll_interval_seconds", 1.0)
+    ntfy.setdefault("topic", "")
 
     content = QWidget()
     layout = QVBoxLayout(content)
@@ -112,6 +127,41 @@ def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
             window.icon_font,
             window.ui_font,
             bar_switch,
+        )
+    )
+
+    topic_wrap = QWidget()
+    topic_layout = QHBoxLayout(topic_wrap)
+    topic_layout.setContentsMargins(0, 0, 0, 0)
+    topic_layout.setSpacing(8)
+    topic_input = QLineEdit(str(ntfy.get("topic", "")).strip())
+    topic_input.setPlaceholderText("my-topic")
+    save_topic_button = QPushButton("Save topic")
+    save_topic_button.setObjectName("secondaryButton")
+    save_topic_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+    def _save_topic() -> None:
+        saved = _set_ntfy_topic(window, topic_input.text())
+        topic_input.setText(saved)
+        if saved:
+            status.setText(
+                f"Topic saved: {saved}. "
+                "Use the built-in ntfy section to configure auth/privacy advanced options."
+            )
+        else:
+            status.setText("Topic cleared. Configure at least one topic to receive notifications.")
+
+    save_topic_button.clicked.connect(_save_topic)
+    topic_layout.addWidget(topic_input)
+    topic_layout.addWidget(save_topic_button)
+    layout.addWidget(
+        SettingsRow(
+            material_icon("notifications"),
+            "Receive topic",
+            "Quick setup for one incoming ntfy topic used by desktop alerts.",
+            window.icon_font,
+            window.ui_font,
+            topic_wrap,
         )
     )
 

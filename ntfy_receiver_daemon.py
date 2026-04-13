@@ -112,7 +112,10 @@ def _load_state() -> dict[str, Any]:
     last_ids = payload.get("last_ids", {})
     if not isinstance(last_ids, dict):
         last_ids = {}
-    return {"last_ids": {str(k): str(v) for k, v in last_ids.items() if str(k).strip()}}
+    return {
+        "last_ids": {str(k): str(v) for k, v in last_ids.items() if str(k).strip()},
+        "missing_topic_warned": bool(payload.get("missing_topic_warned", False)),
+    }
 
 
 def _save_state(state: dict[str, Any]) -> None:
@@ -318,6 +321,20 @@ def main() -> int:
             topics = list(cached_topics)
         else:
             topics = [str(item).strip() for item in settings.get("topics", []) if str(item).strip()]
+
+        if not topics:
+            if not bool(state.get("missing_topic_warned", False)):
+                _notify(
+                    "ntfy setup needed",
+                    "No topic configured. Set a topic in Settings > Services > ntfy.",
+                )
+                state["missing_topic_warned"] = True
+                _save_state(state)
+            time.sleep(max(0.0, poll_interval - (time.monotonic() - loop_start)))
+            continue
+        if bool(state.get("missing_topic_warned", False)):
+            state["missing_topic_warned"] = False
+            _save_state(state)
 
         changed = False
         for topic in topics:
