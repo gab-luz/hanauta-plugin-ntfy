@@ -195,7 +195,7 @@ def _fetch_topics(settings: dict[str, Any], headers: dict[str, str]) -> list[str
 
 
 def _notify(title: str, body: str) -> None:
-    icon_name = "notifications"
+    icon_name = str(NOTIFICATION_ICON) if NOTIFICATION_ICON.exists() else "notifications"
     try:
         subprocess.Popen(
             [
@@ -272,9 +272,13 @@ def _poll_topic(
     if isinstance(payload, dict):
         updated = _handle_event(payload, topic, settings, state)
     elif isinstance(payload, list):
+        # ntfy can return multiple historical events; only act on the newest one.
+        latest_event: dict[str, Any] | None = None
         for item in payload:
-            if isinstance(item, dict) and _handle_event(item, topic, settings, state):
-                updated = True
+            if isinstance(item, dict):
+                latest_event = item
+        if latest_event is not None:
+            updated = _handle_event(latest_event, topic, settings, state)
     return updated
 
 
