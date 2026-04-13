@@ -195,7 +195,7 @@ def _fetch_topics(settings: dict[str, Any], headers: dict[str, str]) -> list[str
 
 
 def _notify(title: str, body: str) -> None:
-    icon_name = str(NOTIFICATION_ICON) if NOTIFICATION_ICON.exists() else "notifications"
+    icon_name = "notifications"
     try:
         subprocess.Popen(
             [
