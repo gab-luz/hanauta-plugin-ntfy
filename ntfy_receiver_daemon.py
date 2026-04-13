@@ -33,6 +33,14 @@ POLL_INTERVAL_SECONDS = 1.0
 TOPICS_REFRESH_INTERVAL_SECONDS = 30.0
 
 
+def _normalize_poll_interval(value: object) -> float:
+    try:
+        parsed = float(value)
+    except Exception:
+        parsed = POLL_INTERVAL_SECONDS
+    return max(1.0, min(60.0, parsed))
+
+
 def _load_settings() -> dict[str, Any]:
     try:
         payload = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
@@ -57,6 +65,9 @@ def _load_settings() -> dict[str, Any]:
         "topics": topics,
         "all_topics": bool(ntfy.get("all_topics", False)),
         "hide_notification_content": bool(ntfy.get("hide_notification_content", False)),
+        "poll_interval_seconds": _normalize_poll_interval(
+            ntfy.get("poll_interval_seconds", POLL_INTERVAL_SECONDS)
+        ),
         "token": str(ntfy.get("token", "")),
         "username": str(ntfy.get("username", "")),
         "password": str(ntfy.get("password", "")),
@@ -287,14 +298,17 @@ def main() -> int:
     while True:
         loop_start = time.monotonic()
         settings = _load_settings()
+        poll_interval = _normalize_poll_interval(
+            settings.get("poll_interval_seconds", POLL_INTERVAL_SECONDS)
+        )
         if not bool(settings.get("enabled", False)):
-            time.sleep(POLL_INTERVAL_SECONDS)
+            time.sleep(poll_interval)
             continue
 
         server = str(settings.get("server_url", "")).strip().rstrip("/")
         headers = _build_headers(settings)
         if not server:
-            time.sleep(POLL_INTERVAL_SECONDS)
+            time.sleep(poll_interval)
             continue
 
         if bool(settings.get("all_topics", False)):
@@ -313,9 +327,8 @@ def main() -> int:
             _save_state(state)
 
         elapsed = time.monotonic() - loop_start
-        time.sleep(max(0.0, POLL_INTERVAL_SECONDS - elapsed))
+        time.sleep(max(0.0, poll_interval - elapsed))
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
