@@ -108,6 +108,29 @@ def _set_ntfy_topics(window, topic_csv: object) -> list[str]:
     return topics
 
 
+def _normalize_server_url(value: object) -> str:
+    url = str(value or "").strip().rstrip("/")
+    if not url:
+        return "https://ntfy.sh"
+    if not url.startswith(("http://", "https://")):
+        return f"https://{url}"
+    return url
+
+
+def _set_ntfy_connection(window, server_url: object, token: object) -> tuple[str, str]:
+    ntfy = window.settings_state.setdefault("ntfy", {})
+    if not isinstance(ntfy, dict):
+        ntfy = {}
+        window.settings_state["ntfy"] = ntfy
+    normalized_url = _normalize_server_url(server_url)
+    normalized_token = str(token or "").strip()
+    ntfy["server_url"] = normalized_url
+    ntfy["token"] = normalized_token
+    ntfy["auth_mode"] = "token"
+    _save_settings(window)
+    return normalized_url, normalized_token
+
+
 def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
     SettingsRow = api["SettingsRow"]
     SwitchButton = api["SwitchButton"]
@@ -129,6 +152,9 @@ def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
     ntfy.setdefault("poll_interval_seconds", 1.0)
     ntfy.setdefault("topic", "")
     ntfy.setdefault("topics", [])
+    ntfy.setdefault("server_url", "https://ntfy.sh")
+    ntfy.setdefault("token", "")
+    ntfy.setdefault("auth_mode", "token")
 
     content = QWidget()
     layout = QVBoxLayout(content)
@@ -160,6 +186,68 @@ def build_ntfy_service_section(window, api: dict[str, object]) -> QWidget:
             window.icon_font,
             window.ui_font,
             bar_switch,
+        )
+    )
+
+    server_wrap = QWidget()
+    server_layout = QHBoxLayout(server_wrap)
+    server_layout.setContentsMargins(0, 0, 0, 0)
+    server_layout.setSpacing(8)
+    server_input = QLineEdit(_normalize_server_url(ntfy.get("server_url", "")))
+    server_input.setPlaceholderText("https://ntfy.sh")
+    save_server_button = QPushButton("Save URL")
+    save_server_button.setObjectName("secondaryButton")
+    save_server_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+    token_wrap = QWidget()
+    token_layout = QHBoxLayout(token_wrap)
+    token_layout.setContentsMargins(0, 0, 0, 0)
+    token_layout.setSpacing(8)
+    token_input = QLineEdit(str(ntfy.get("token", "")))
+    token_input.setPlaceholderText("API token (optional)")
+    token_input.setEchoMode(QLineEdit.EchoMode.Password)
+    save_token_button = QPushButton("Save token")
+    save_token_button.setObjectName("secondaryButton")
+    save_token_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+    def _save_connection() -> None:
+        saved_url, saved_token = _set_ntfy_connection(
+            window, server_input.text(), token_input.text()
+        )
+        server_input.setText(saved_url)
+        token_input.setText(saved_token)
+        status.setText(
+            "ntfy connection saved (server URL + token auth)."
+            if saved_token
+            else "ntfy server URL saved. Token is empty (public topics only)."
+        )
+
+    save_server_button.clicked.connect(_save_connection)
+    save_token_button.clicked.connect(_save_connection)
+    token_input.returnPressed.connect(_save_connection)
+    server_input.returnPressed.connect(_save_connection)
+    server_layout.addWidget(server_input)
+    server_layout.addWidget(save_server_button)
+    token_layout.addWidget(token_input)
+    token_layout.addWidget(save_token_button)
+    layout.addWidget(
+        SettingsRow(
+            material_icon("public"),
+            "Server URL",
+            "Your ntfy server endpoint used for incoming checks.",
+            window.icon_font,
+            window.ui_font,
+            server_wrap,
+        )
+    )
+    layout.addWidget(
+        SettingsRow(
+            material_icon("lock"),
+            "API token",
+            "Optional bearer token for private ntfy topics.",
+            window.icon_font,
+            window.ui_font,
+            token_wrap,
         )
     )
 
